@@ -65,3 +65,9 @@
 ## Why signed commits matter
 
 By default, anyone can put any name and email into `git config`, so commit history is unauthenticated — the author field proves nothing. Signed commits fix this by attaching a cryptographic claim that the commit was really made by the holder of a specific key, which reviewers can verify. The March 2024 xz-utils incident is the cautionary tale: an attacker operating under the account "JiaT75" spent roughly two years posing as a trusted maintainer and nearly backdoored every SSH daemon on Linux. Verified commit signatures would have made it much harder to forge that identity and would have exposed the anomalous commits long before the backdoor shipped.
+
+## GitHub Community
+
+I starred `inno-devops-labs/DevOps-Intro` and `simple-container-com/api` to bookmark projects I want to keep an eye on, and followed my professor (@Cre-eD), TAs (@Naghme98, @pierrepicaud), and three classmates (@witch2256, @IamdLite, @aniksel) to stay connected with the people I'll collaborate with during the course.
+
+Starring repositories matters in open source because stars are a lightweight signal of interest and trust — they help maintainers gauge adoption, help newcomers discover projects worth using, and give contributors a way to support work they rely on. Following developers helps in team projects and professional growth because it turns GitHub into a live feed of what your peers and mentors are building, making it easier to learn from their work, notice opportunities to collaborate, and stay visible in the community.
