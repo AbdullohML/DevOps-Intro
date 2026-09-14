@@ -10,15 +10,13 @@ on:
 permissions:
   contents: read
 
-# All Go commands run against app/, where the module lives.
-defaults:
-  run:
-    working-directory: app
-
 jobs:
   vet:
     name: vet
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
     strategy:
       fail-fast: false
       matrix:
@@ -37,6 +35,9 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
     strategy:
       fail-fast: false
       matrix:
