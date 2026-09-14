@@ -255,111 +255,295 @@ The branch protection ruleset requires:
 
 This prevents the matrix check names from breaking the branch protection configuration.
 
-## 2.3 — Path filtering
+# Lab 3 submission
 
-The workflow only runs when files under `app/` or the CI workflow itself are changed:
+**Chosen path: GitHub Actions.** I used GitHub Actions because the repository is already hosted on GitHub, so the CI workflow, pull requests, status checks and branch protection can all be managed in one place.
+
+The CI pipeline is defined in `.github/workflows/ci.yml`.
+
+**PR:** https://github.com/AbdullohML/DevOps-Intro/pull/5
+
+---
+
+## Task 1: Write the PR Gate
+
+### 1.1: CI pipeline
+
+The pipeline runs on pushes to `main` and on pull requests targeting `main`.
+
+The three required checks are independent jobs:
+
+- `vet` runs `go vet ./...`
+- `test` runs `go test -race -count=1 ./...`
+- `lint` runs `golangci-lint run`
+
+The Go jobs use Ubuntu 24.04 and the third-party GitHub Actions are pinned to full 40-character commit SHAs.
+
+The `ci-ok` job aggregates the results of `vet`, `test` and `lint`, so branch protection can require one stable status check even though `vet` and `test` use a Go-version matrix.
+
+**Green CI run:** https://github.com/AbdullohML/DevOps-Intro/actions/runs/34892015299
+
+**Workflow:** https://github.com/AbdullohML/DevOps-Intro/blob/feature/lab3/.github/workflows/ci.yml
+
+### 1.2: Design questions
+
+#### a) Why pin `ubuntu-24.04` instead of `ubuntu-latest`?
+
+`ubuntu-latest` is a moving alias. GitHub can change which Ubuntu release it points to, which can also change preinstalled tools, system libraries and other parts of the runner environment.
+
+That means the same commit can potentially behave differently later without any change in the repository.
+
+Using `ubuntu-24.04` makes the runner version an explicit part of the CI configuration. When I want to move to another runner version, I can do it deliberately in a reviewed commit.
+
+#### b) Why split `vet`, `test` and `lint` into separate jobs?
+
+There are three main reasons.
+
+First, they can run in parallel, so the wall-clock time is closer to the slowest job instead of the sum of all three.
+
+Second, failures are easier to diagnose. If everything is one job, the first failing command can hide failures in the other checks. Separate jobs show exactly whether `vet`, `test` or `lint` failed.
+
+Third, each job produces its own status check, which makes the PR gate clearer and allows the final `ci-ok` job to aggregate their results.
+
+#### c) What real attack does SHA pinning prevent?
+
+A relevant example is the **tj-actions/changed-files compromise in March 2025**.
+
+The incident demonstrated the risk of depending on mutable action tags. If a third-party action is referenced using a tag such as `@vX`, the tag can potentially be moved to another commit. If the upstream repository or release process is compromised, users can execute malicious code without changing their own workflow.
+
+Pinning an action to its full 40-character commit SHA means the workflow refers to one exact commit. Moving a tag upstream does not change which code the workflow executes.
+
+This does not make a compromised commit safe, but it prevents an upstream tag from silently changing the code executed by my workflow.
+
+#### d) What is `permissions:` and what is the principle behind it?
+
+`permissions:` controls what the automatically provided `GITHUB_TOKEN` can access during a workflow run.
+
+The principle is **least privilege**: a workflow should receive only the permissions it actually needs.
+
+My CI only needs to read the repository in order to check out the source code and run the Go tools, so the workflow starts with:
 
 ```yaml
-paths:
-  - 'app/**'
-  - '.github/workflows/ci.yml'
+permissions:
+  contents: read
 ```
 
-Therefore:
+This reduces the possible impact if a dependency or third-party action used by the workflow is compromised.
 
-* changes under `app/` trigger CI
-* changes to `.github/workflows/ci.yml` trigger CI
-* README-only changes do not independently match the workflow paths
+#### e) GitLab: stage vs job, and what does `dependencies:` do that `stages:` doesn't?
 
-The README test was performed on the existing pull request. Since that pull request already contains changes under `app/` and `.github/workflows/ci.yml`, GitHub continued to run the workflow. This is expected because path filtering considers the files changed by the pull request as a whole, not only the newest commit.
+A GitLab **job** is an individual unit of work that runs commands on a runner.
 
-## 2.4 — Wall-clock measurements
+A **stage** groups jobs into an execution order. Jobs in the same stage can run in parallel, while later stages normally wait for the previous stage to finish.
 
-The following successful runs were used for comparison.
+`dependencies:` controls artifact downloading between jobs. It specifies which earlier jobs' artifacts should be downloaded into the current job.
 
-| Configuration                  | Successful runs |   Median |
-| ------------------------------ | --------------: | -------: |
-| Baseline — no cache, no matrix |   30s, 30s, 41s |  **30s** |
-| Cache — no matrix              |             60s | **60s*** |
-| Cache + matrix                 |   45s, 46s, 41s |  **45s** |
+Therefore, `stages:` controls the ordering of jobs, while `dependencies:` controls which artifacts are transferred between jobs.
 
-* Only one successful cache-only measurement was available, so this is not a statistically strong median.
+---
 
-### Observations
+## 1.5: Proving the gate blocks a bad change
 
-Caching did not improve the observed wall-clock time.
+I deliberately broke a test in `app/handlers_test.go`.
 
-This is expected for QuickNotes because the project has essentially no third-party Go dependencies, so there is very little dependency-download work to eliminate.
+The original test expected:
 
-The matrix also does not reduce the total amount of work performed. Its main benefit is testing compatibility across multiple Go versions while allowing the jobs to run in parallel.
+```go
+http.StatusCreated
+```
 
-The measurements suggest that a significant part of the wall-clock time comes from GitHub Actions runner provisioning, checkout, Go setup, and general CI overhead rather than dependency installation.
+I temporarily changed the expected status to `http.StatusOK`. The application correctly returned HTTP 201, so the test failed.
 
-## Task 2.5 — Optimization and security questions
+**Failed CI run:** https://github.com/AbdullohML/DevOps-Intro/actions/runs/34886236027
 
-### f) Why cache Go module inputs rather than build outputs?
-
-Build outputs are generated from source code and the build environment. They can become invalid whenever source files, dependencies, or the environment change.
-
-Go module and build cache data can be reused when the relevant inputs have not changed.
-
-Caching these inputs and intermediate data makes the cache more reproducible and avoids treating previously generated final binaries as trusted build outputs.
-
-### g) What does `fail-fast: false` change and when would `true` be useful?
-
-`fail-fast: false` allows all matrix jobs to continue even when one matrix job fails.
-
-This is useful when we want complete information about compatibility across all supported Go versions.
-
-`fail-fast: true` can be useful when the matrix is large or expensive and there is little value in running the remaining jobs after an early failure.
-
-### h) What is the cache security risk?
-
-An untrusted pull request could potentially attempt to influence or poison cached data.
-
-If a protected branch later restored attacker-controlled cache contents and treated them as trusted, malicious files or artifacts could potentially affect the trusted workflow.
-
-Therefore caches should not be treated as trusted executable sources. Cache scopes and restore behavior should prevent untrusted pull requests from supplying data that protected branches blindly trust.
-
-## Final CI architecture
+The relevant failure was:
 
 ```text
-                         ┌── vet (1.23) ──┐
-                         ├── vet (1.24) ──┤
-Pull Request ────────────┼── test (1.23) ─┼──> ci-ok ──> required gate
-                         ├── test (1.24) ─┤
-                         └── lint ────────┘
+--- FAIL: TestCreateNote_RoundTrip
+    handlers_test.go:64: expected 200, got 201: {"id":1,"title":"first","body":"hello","created_at":"2026-09-14T19:20:24.884244069Z"}
+FAIL
+FAIL quicknotes 0.016s
+Error: Process completed with exit code 1
 ```
 
-The final pipeline provides:
+This demonstrated that a failing test causes the CI gate to fail.
 
-* pinned Ubuntu runner version
-* pinned Go versions
-* SHA-pinned GitHub Actions
-* least-privilege permissions
-* independent vet, test and lint jobs
-* Go 1.23 and 1.24 compatibility testing
-* Go caching
-* path-based workflow filtering
-* a stable `ci-ok` aggregation gate
-* protected `main` branch
-* deliberate failure testing proving the PR gate works
-* wall-clock measurements comparing the pipeline configurations
+I then restored the expected value to `http.StatusCreated` and pushed the fix.
 
-## Links
+**Green CI run after the fix:** https://github.com/AbdullohML/DevOps-Intro/actions/runs/34892015299
 
-Pull request:
+---
 
-https://github.com/AbdullohML/DevOps-Intro/pull/5
+## 1.6: Branch protection
 
-Final successful CI run:
+I configured branch protection for `main` in my fork.
 
-https://github.com/AbdullohML/DevOps-Intro/actions/runs/34890308982
+The rules require changes to go through a pull request, require the branch to be up to date, require the CI status check to pass, and prevent force pushes.
 
-Deliberate failed test run:
+The stable aggregation check is `ci / ci-ok`, so branch protection does not need to depend on individual matrix-generated check names.
 
-https://github.com/AbdullohML/DevOps-Intro/actions/runs/34886236027
+**Branch protection screenshot:**
 
-Repository:
+![Branch protection rules](rule.png)
 
-https://github.com/AbdullohML/DevOps-Intro
+I also verified that a direct push to `main` was rejected by the repository rules:
+
+```text
+remote: error: GH013: Repository rule violations found for refs/heads/main.
+remote:
+remote: - Changes must be made through a pull request.
+remote:
+remote: - 3 of 3 required status checks are expected.
+...
+! [remote rejected] main -> main (push declined due to repository rule violations)
+```
+
+---
+
+# Task 2: Make It Fast and Smart
+
+## 2.1: Caching
+
+I enabled Go caching through `actions/setup-go`:
+
+```yaml
+cache: true
+```
+
+This is intended to cache Go module downloads and the Go build cache.
+
+However, QuickNotes has essentially no third-party dependencies. The project does not have a `go.sum` file, and the workflow log showed that the dependency-file lookup could not find a suitable dependency file at the repository root.
+
+The cache warning was:
+
+```text
+Restore cache failed: Dependencies file is not found in
+/home/runner/work/DevOps-Intro/DevOps-Intro.
+```
+
+Therefore I did not observe a meaningful cache speedup.
+
+This is also consistent with the project having no substantial third-party dependencies to download, so there is very little dependency work for the cache to eliminate.
+
+---
+
+## 2.2: Build matrix
+
+I changed `vet` and `test` to run against both Go 1.23 and Go 1.24.
+
+The matrix uses:
+
+```yaml
+strategy:
+  fail-fast: false
+  matrix:
+    go: ['1.23', '1.24']
+```
+
+The matrix jobs run in parallel, and one failed version does not cancel the other version.
+
+This checks that the project works across both specified Go versions rather than only the version used locally.
+
+The matrix also changes the individual check names, which is why I use the `ci-ok` aggregation job as the stable branch-protection check.
+
+The aggregation job uses:
+
+```yaml
+if: always()
+needs: [vet, test, lint]
+```
+
+and fails if any required job fails or is cancelled.
+
+This allows the matrix to change without requiring the branch-protection rule to be updated every time.
+
+---
+
+## 2.3: Skipping docs-only changes
+
+The workflow uses path filters so CI is triggered for changes to:
+
+```text
+app/**
+.github/workflows/ci.yml
+```
+
+The relevant configuration is:
+
+```yaml
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/ci.yml'
+```
+
+I also tested adding a README-only change to the existing PR. CI still ran because the pull request already contained changes under `app/` and the workflow file.
+
+This is because GitHub evaluates the paths for the **whole pull request**, not only for the latest commit. Therefore, adding a documentation-only commit to an existing code PR does not demonstrate the docs-only skip behavior.
+
+A separate completely docs-only PR would be needed to demonstrate the skip behavior conclusively.
+
+---
+
+## 2.4: Measurements
+
+I compared the workflow before and after the main Task 2 optimizations.
+
+| Scenario | Observed runs | Wall-clock |
+|---|---|---:|
+| Baseline, single Go version | #6: 30s, #7: 30s, #9: 41s | median ≈ 30s |
+| Cache enabled | #11: 60s | ≈ 60s |
+| Cache + Go matrix | #12: 45s, #13: 46s, #14: 41s | median ≈ 45s |
+
+**Baseline run #6:** https://github.com/AbdullohML/DevOps-Intro/actions/runs/34885376640
+
+**Cache-enabled run #11:** https://github.com/AbdullohML/DevOps-Intro/actions/runs/34887571088
+
+**Matrix run #14:** https://github.com/AbdullohML/DevOps-Intro/actions/runs/34890308982
+
+These measurements should be interpreted cautiously because GitHub-hosted runner startup and other infrastructure overhead varies between runs.
+
+The important observation is that caching did not make this project faster. The project has very little dependency work, so there is little dependency download time to remove.
+
+The matrix increases the amount of work performed, but the matrix jobs run concurrently, so the increase in wall-clock time is much smaller than simply running every version sequentially.
+
+---
+
+## 2.5: Design questions
+
+### f) Why cache `go.sum`-keyed inputs and not build outputs?
+
+Dependency inputs are better cache keys because they represent the exact external dependencies used by the project.
+
+A change in `go.sum` means the dependency set or dependency versions changed, so the cache can be invalidated.
+
+Build outputs depend on many more inputs, including the Go version, operating system, architecture, build flags and source code. A poorly designed build-output cache can therefore return stale artifacts.
+
+Caching dependency-related inputs is safer because the cache can be invalidated when the dependency definition changes instead of accidentally reusing an incompatible compiled output.
+
+For this project, there is little practical benefit because QuickNotes has no substantial third-party dependency set.
+
+### g) What does `fail-fast: false` change, and when do you want `fail-fast: true`?
+
+With `fail-fast: false`, a failure in one matrix job does not cancel the other matrix jobs.
+
+This is useful when the purpose of the matrix is to understand compatibility across multiple versions. If Go 1.23 fails but Go 1.24 passes, I still want the Go 1.24 result instead of having it cancelled.
+
+`fail-fast: true` is more appropriate when matrix jobs are expensive and additional results are not useful after the first failure. In that case, cancelling the remaining jobs saves CI resources.
+
+### h) What is the risk of an attacker writing a cache from a malicious PR that protected branches later read?
+
+The main risk is **cache poisoning**.
+
+A malicious pull request could potentially cause attacker-controlled data to be written into a cache. If a trusted workflow later restored that cache without sufficient isolation, the attacker-controlled files could be used during a build or execution step.
+
+That could turn an apparently harmless cache restore into a way of executing untrusted content in a more privileged workflow.
+
+Therefore cache scope and isolation are important. A protected branch should not blindly consume cache data produced by an untrusted pull request.
