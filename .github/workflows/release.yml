@@ -38,3 +38,13 @@ jobs:
 
           docker push "${IMAGE}:${GITHUB_REF_NAME}"
           docker push "${IMAGE}:latest"
+
+      - name: Deploy to Render
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          IMAGE: ghcr.io/abdullohml/devops-intro/quicknotes
+        run: |
+          curl --fail --show-error --silent \
+            --get \
+            --data-urlencode "imgURL=${IMAGE}:${GITHUB_REF_NAME}" \
+            "$RENDER_DEPLOY_HOOK_URL"
