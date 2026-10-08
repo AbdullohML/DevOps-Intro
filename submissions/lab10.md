@@ -46,7 +46,7 @@ The `latest` tag was also successfully pulled without authentication.
 
 ### Green release workflow
 
-https://github.com/AbdullohML/DevOps-Intro/actions/runs/37823472088
+https://github.com/AbdullohML/DevOps-Intro/actions/runs/37844409567
 
 The v0.1.1 workflow successfully:
 
