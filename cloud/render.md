@@ -31,3 +31,22 @@ Render startup log:
 
 quicknotes listening on :10000 (notes loaded: 0)
 Your service is live
+
+## Automated deploy
+
+GitHub Actions deploys Render after publishing a tagged image to GHCR.
+
+The Render deploy hook is stored in GitHub Actions as the repository secret:
+
+RENDER_DEPLOY_HOOK_URL
+
+The secret value is not stored in the repository.
+
+The v0.1.1 release successfully triggered a Render deployment using:
+
+ghcr.io/abdullohml/devops-intro/quicknotes:v0.1.1
+
+Render showed:
+
+Trigger: Deploy Hook
+Deploy succeeded
