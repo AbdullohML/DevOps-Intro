@@ -1,0 +1,22 @@
+2026-10-08T17:29:24Z	INFO	[vuln] Vulnerability scanning is enabled
+2026-10-08T17:29:24Z	INFO	[secret] Secret scanning is enabled
+2026-10-08T17:29:24Z	INFO	[secret] If your scanning is slow, please try '--scanners vuln' to disable secret scanning
+2026-10-08T17:29:24Z	INFO	[secret] Please see also https://aquasecurity.github.io/trivy/v0.59/docs/scanner/secret#recommendation for faster secret detection
+
+.vagrant/machines/default/virtualbox/private_key (secrets)
+==========================================================
+Total: 1 (HIGH: 1, CRITICAL: 0)
+
+HIGH: AsymmetricPrivateKey (private-key)
+════════════════════════════════════════
+Asymmetric Private Key
+────────────────────────────────────────
+ .vagrant/machines/default/virtualbox/private_key:1
+────────────────────────────────────────
+   1 [ BEGIN OPENSSH PRIVATE KEY-----*******************************************************************************************************************************************************************************************************************************************************************************************************************************************-----END OPENSSH PRI
+   2
+────────────────────────────────────────
+
+
+2026-10-08T17:29:24Z	INFO	Number of language-specific files	num=1
+2026-10-08T17:29:24Z	INFO	[gomod] Detecting vulnerabilities...
