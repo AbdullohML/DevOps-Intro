@@ -1,0 +1,50 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            docker login ghcr.io \
+              -u "${{ github.actor }}" \
+              --password-stdin
+
+      - name: Build image
+        run: |
+          IMAGE="ghcr.io/abdullohml/devops-intro/quicknotes"
+
+          docker build \
+            -t "${IMAGE}:${GITHUB_REF_NAME}" \
+            -t "${IMAGE}:latest" \
+            app/
+
+      - name: Push image
+        run: |
+          IMAGE="ghcr.io/abdullohml/devops-intro/quicknotes"
+
+          docker push "${IMAGE}:${GITHUB_REF_NAME}"
+          docker push "${IMAGE}:latest"
+
+      - name: Deploy to Render
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          IMAGE: ghcr.io/abdullohml/devops-intro/quicknotes
+        run: |
+          curl --fail --show-error --silent \
+            --get \
+            --data-urlencode "imgURL=${IMAGE}:${GITHUB_REF_NAME}" \
+            "$RENDER_DEPLOY_HOOK_URL"
