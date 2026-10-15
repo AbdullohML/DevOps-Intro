@@ -24,13 +24,7 @@ jobs:
         run: |
           OUT=$(nix build .#docker --no-link --print-out-paths)
 
-          cp "$OUT" /tmp/quicknotes-image.tar.gz
-          chmod u+w /tmp/quicknotes-image.tar.gz
-
-          # Deliberate divergence for the required red CI run.
-          printf 'deliberate-divergence\n' >> /tmp/quicknotes-image.tar.gz
-
-          DIGEST=$(sha256sum /tmp/quicknotes-image.tar.gz | awk '{print $1}')
+          DIGEST=$(sha256sum "$OUT" | awk '{print $1}')
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
           echo "Build A digest: $DIGEST"
 
