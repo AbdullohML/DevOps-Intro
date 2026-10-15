@@ -25,6 +25,7 @@ jobs:
           OUT=$(nix build .#docker --no-link --print-out-paths)
 
           cp "$OUT" /tmp/quicknotes-image.tar.gz
+          chmod u+w /tmp/quicknotes-image.tar.gz
 
           # Deliberate divergence for the required red CI run.
           printf 'deliberate-divergence\n' >> /tmp/quicknotes-image.tar.gz
