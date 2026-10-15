@@ -8,6 +8,7 @@
   outputs = { self, nixpkgs }:
     let
       system = "x86_64-linux";
+
       pkgs = import nixpkgs {
         inherit system;
       };
@@ -27,11 +28,41 @@
           "-w"
         ];
       };
+
+      dockerImage = pkgs.dockerTools.buildImage {
+        name = "quicknotes";
+        tag = "nix";
+
+        copyToRoot = pkgs.buildEnv {
+          name = "quicknotes-root";
+          paths = [
+            pkgs.cacert
+          ];
+        };
+
+        extraCommands = ''
+          mkdir -p data
+          chmod 0777 data
+        '';
+
+        config = {
+          Entrypoint = [
+            "${quicknotes}/bin/quicknotes"
+          ];
+
+          ExposedPorts = {
+            "8080/tcp" = {};
+          };
+
+          User = "65532:65532";
+        };
+      };
     in
     {
       packages.${system} = {
         inherit quicknotes;
         default = quicknotes;
+        docker = dockerImage;
       };
 
       devShells.${system}.default = pkgs.mkShell {
