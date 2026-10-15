@@ -1,0 +1,77 @@
+name: Nix Reproducibility
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-a:
+    name: Build A
+    runs-on: ubuntu-24.04
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+
+      - name: Build image
+        id: digest
+        run: |
+          OUT=$(nix build .#docker --no-link --print-out-paths)
+
+          cp "$OUT" /tmp/quicknotes-image.tar.gz
+
+          # Deliberate divergence for the required red CI run.
+          printf 'deliberate-divergence\n' >> /tmp/quicknotes-image.tar.gz
+
+          DIGEST=$(sha256sum /tmp/quicknotes-image.tar.gz | awk '{print $1}')
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Build A digest: $DIGEST"
+
+  build-b:
+    name: Build B
+    runs-on: ubuntu-24.04
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+
+      - name: Build image
+        id: digest
+        run: |
+          OUT=$(nix build .#docker --no-link --print-out-paths)
+
+          DIGEST=$(sha256sum "$OUT" | awk '{print $1}')
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Build B digest: $DIGEST"
+
+  compare:
+    name: Compare digests
+    runs-on: ubuntu-24.04
+    needs:
+      - build-a
+      - build-b
+
+    steps:
+      - name: Verify reproducibility
+        env:
+          DIGEST_A: ${{ needs.build-a.outputs.digest }}
+          DIGEST_B: ${{ needs.build-b.outputs.digest }}
+        run: |
+          echo "Build A: $DIGEST_A"
+          echo "Build B: $DIGEST_B"
+
+          if [ "$DIGEST_A" != "$DIGEST_B" ]; then
+            echo "ERROR: image digests differ"
+            exit 1
+          fi
+
+          echo "SUCCESS: image digests are identical"
